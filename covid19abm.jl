@@ -104,7 +104,7 @@ end
 
     days_Rt::Array{Int64,1} = [100;200;300]
     priority::Bool = false
-    sec_strain_trans::Float64 = 1.5
+    sec_strain_trans::Float64 = 1.25
     ins_sec_strain::Bool = false
     initialinf2::Int64 = 1
     max_vac_delay::Int64 = 42
@@ -671,10 +671,9 @@ function vac_update(x::Human)
 
         x.days_vac += 1
         
-    else
+    elseif x.vac_status == 2
         if x.days_vac == p.days_to_protection[x.vac_status]
             if p.vac_effect == 1
-                red_com = x.vac_red#p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
                 aux = (p.vac_efficacy-p.vac_efficacy_fd)+x.vac_ef
                 if aux < p.vac_efficacy_fd
                     aux = p.vac_efficacy_fd
@@ -684,6 +683,7 @@ function vac_update(x::Human)
             else
                 error("Vaccinating but no vac effect")
             end
+            red_com = x.vac_red#p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
             x.vac_ef = ((1-red_com)^comm)*aux
         end
         x.days_vac += 1
