@@ -55,24 +55,46 @@ function run(myp::cv.ModelParameters, nsims=1000, folderprefix="./")
     ## to ignore for now: miso, iiso, mild 
     #c1 = Symbol.((:LAT, :ASYMP, :INF, :PRE, :MILD,:IISO, :HOS, :ICU, :DED), :_INC)
     #c2 = Symbol.((:LAT, :ASYMP, :INF, :PRE, :MILD,:IISO, :HOS, :ICU, :DED), :_PREV)
-    c1 = Symbol.((:LAT, :HOS, :ICU, :DED,:LAT2, :HOS2, :ICU2, :DED2), :_INC)
-    c2 = Symbol.((:LAT, :HOS, :ICU, :DED,:LAT2, :HOS2, :ICU2, :DED2), :_PREV)
-   for (k, df) in mydfs
-        println("saving dataframe sim level: $k")
-        # simulation level, save file per health status, per age group
-        for c in vcat(c1..., c2...)
-        #for c in vcat(c1...)
-        #for c in vcat(c2...)
-            udf = unstack(df, :time, :sim, c) 
-            fn = string("$(folderprefix)/simlevel_", lowercase(string(c)), "_", k, ".dat")
-            CSV.write(fn, udf)
+    if !myp.heatmap
+        c1 = Symbol.((:LAT, :HOS, :ICU, :DED,:LAT2, :HOS2, :ICU2, :DED2), :_INC)
+        c2 = Symbol.((:LAT, :HOS, :ICU, :DED,:LAT2, :HOS2, :ICU2, :DED2), :_PREV)
+        for (k, df) in mydfs
+            println("saving dataframe sim level: $k")
+            # simulation level, save file per health status, per age group
+            for c in vcat(c1..., c2...)
+            #for c in vcat(c1...)
+            #for c in vcat(c2...)
+                udf = unstack(df, :time, :sim, c) 
+                fn = string("$(folderprefix)/simlevel_", lowercase(string(c)), "_", k, ".dat")
+                CSV.write(fn, udf)
+            end
+            println("saving dataframe time level: $k")
+            # time level, save file per age group
+            #yaf = compute_yearly_average(df)       
+            #fn = string("$(folderprefix)/timelevel_", k, ".dat")   
+            #CSV.write(fn, yaf)       
         end
-        println("saving dataframe time level: $k")
-        # time level, save file per age group
-        #yaf = compute_yearly_average(df)       
-        #fn = string("$(folderprefix)/timelevel_", k, ".dat")   
-        #CSV.write(fn, yaf)       
+    else
+        c1 = Symbol.((:LAT, :HOS, :ICU, :DED,:LAT2, :HOS2, :ICU2, :DED2), :_INC)
+        #c2 = Symbol.((:LAT, :HOS, :ICU, :DED,:LAT2, :HOS2, :ICU2, :DED2), :_PREV)
+        for (k, df) in mydfs
+            println("saving dataframe sim level: $k")
+            # simulation level, save file per health status, per age group
+            
+            for c in vcat(c1...)
+            #for c in vcat(c2...)
+                udf = unstack(df, :time, :sim, c) 
+                fn = string("$(folderprefix)/simlevel_", lowercase(string(c)), "_", k, ".dat")
+                CSV.write(fn, udf)
+            end
+            println("saving dataframe time level: $k")
+            # time level, save file per age group
+            #yaf = compute_yearly_average(df)       
+            #fn = string("$(folderprefix)/timelevel_", k, ".dat")   
+            #CSV.write(fn, yaf)       
+        end
     end
+   
 
     ##########Saving vaccine status
     #=println("saving vac status")
@@ -267,22 +289,7 @@ function calibrate_robustness(beta, reps, prov=:usa)
     # end
     return cd
 end
-#= 
-function create_folder(ip::cv.ModelParameters)
-    #strategy = ip.apply_vac_com == true ? "T" : "UT"
-    strategy = ip.vaccinating == true ? "$(ip.days_before)" : "NV"
-    #RF = string("heatmap/results_prob_","$(replace(string(ip.β), "." => "_"))","_vac_","$(replace(string(ip.vaccine_ef), "." => "_"))","_herd_immu_","$(ip.herd)","_$strategy","cov_$(replace(string(ip.cov_val)))") ## 
-    main_folder = "/data/thomas-covid/for_sci"
-    if ip.set_g_cov
-        RF = string(main_folder,"/results_prob_","$(replace(string(ip.β), "." => "_"))","_vac_","$(replace(string(ip.vac_efficacy), "." => "_"))","_herd_immu_","$(ip.herd)","_$strategy","_cov_$(replace(string(ip.cov_val), "." => "_"))") ## 
-    else
-        RF = string(main_folder,"/results_prob_","$(replace(string(ip.β), "." => "_"))","_vac_","$(replace(string(ip.vac_efficacy), "." => "_"))","_herd_immu_","$(ip.herd)_$(ip.reduction_protection)","_$strategy") ##  
-    end
-    if !Base.Filesystem.isdir(RF)
-        Base.Filesystem.mkpath(RF)
-    end
-    return RF
-end =#
+
 function create_folder(ip::cv.ModelParameters,heatmap=false)
     #strategy = ip.apply_vac_com == true ? "T" : "UT"
     strategy = ip.vaccinating == true ? "$(ip.days_before)" : "NV"
@@ -330,14 +337,14 @@ end
 
 
 ## now, running vaccine and herd immunity, focusing and not focusing in comorbidity, first  argument turns off vac
-function run_param_fix_heatmap(herd_im_v = [0],fs=0.0,fm=0.0,sev=false,vaccinate = false,v_e = 0.0,ndose=false,drop = 0.0,vfd = v_e/2.0,rd=0.0,sdd=21,heatmap=true,nsims=1000)
+function run_param_fix_heatmap(herd_im_v = [0],fs=0.0,fm=0.0,sev=false,vaccinate = false,v_e = 0.0,ndose=false,drop = 0.0,vfd = v_e/2.0,rd=0.0,sdd=21,nsims=1000)
     for h_i = herd_im_v
         bd = Dict(5=>0.0395, 10=>0.042, 20=>0.0465, 30=>0.053)
         init_con = Dict(5=>3, 10=>4, 20=>6, 30=>9)
         b = bd[h_i]
         ic = init_con[h_i]
-        @everywhere ip = cv.ModelParameters(β=$b,fsevere = $fs,fmild = $fm,vaccinating = $vaccinate,vac_efficacy = $v_e,herd = $(h_i),single_dose=$(ndose),vac_efficacy_fd=$vfd,drop_rate = $drop,sec_dose_delay = $sdd,reduction_protection=$rd,start_several_inf=$sev,initialinf=$ic)
-        folder = create_folder(ip,heatmap)
+        @everywhere ip = cv.ModelParameters(heatmap=true,β=$b,fsevere = $fs,fmild = $fm,vaccinating = $vaccinate,vac_efficacy = $v_e,herd = $(h_i),single_dose=$(ndose),vac_efficacy_fd=$vfd,drop_rate = $drop,sec_dose_delay = $sdd,reduction_protection=$rd,start_several_inf=$sev,initialinf=$ic)
+        folder = create_folder(ip,true)
 
         #println("$v_e $(ip.vaccine_ef)")
         run(ip,nsims,folder)
