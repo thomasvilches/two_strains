@@ -330,7 +330,7 @@ function main(ip::ModelParameters,sim::Int64)
     else
         #applying_vac(sim)
         herd_immu_dist_4(sim,1)
-        insert_infected(PRE, p.initialinf, 4,1)[1]
+        insert_infected(PRE, 1, 4,1)[1]
     end    
     h_init1 = findall(x->x.health  in (LAT,MILD,MISO,INF,PRE,ASYMP),humans)
 

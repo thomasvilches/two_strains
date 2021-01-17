@@ -321,13 +321,13 @@ end
 
 
 ## now, running vaccine and herd immunity, focusing and not focusing in comorbidity, first  argument turns off vac
-function run_param_fix(herd_im_v = [0],fs=0.0,fm=0.0,sev=false,vaccinate = false,v_e = 0.0,ndose=false,drop = 0.0,vfd = v_e/2.0,rd=0.0,heatmap=false,nsims=1000)
+function run_param_fix(herd_im_v = [0],fs=0.0,fm=0.0,vaccinate = false,v_e = 0.0,ndose=false,drop = 0.0,vfd = v_e/2.0,rd=0.0,heatmap=false,nsims=1000)
     for h_i = herd_im_v
         bd = Dict(5=>0.0395, 10=>0.042, 20=>0.0465, 30=>0.053)
         init_con = Dict(5=>3, 10=>4, 20=>6, 30=>9)
         b = bd[h_i]
         ic = init_con[h_i]
-        @everywhere ip = cv.ModelParameters(β=$b,fsevere = $fs,fmild = $fm,vaccinating = $vaccinate,vac_efficacy = $v_e,herd = $(h_i),single_dose=$(ndose),vac_efficacy_fd=$vfd,drop_rate = $drop,reduction_protection=$rd,start_several_inf=$sev,initialinf=$ic)
+        @everywhere ip = cv.ModelParameters(β=$b,fsevere = $fs,fmild = $fm,vaccinating = $vaccinate,vac_efficacy = $v_e,herd = $(h_i),single_dose=$(ndose),vac_efficacy_fd=$vfd,drop_rate = $drop,reduction_protection=$rd,start_several_inf=true,initialinf=$ic)
         folder = create_folder(ip,heatmap)
 
         #println("$v_e $(ip.vaccine_ef)")
