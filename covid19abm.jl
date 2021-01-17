@@ -663,7 +663,7 @@ function vac_update(x::Human)
         end
 
         if x.days_vac > p.max_vac_delay
-            x.vac_ef =- (p.ef_decrease_per_week/7)
+            x.vac_ef = x.vac_ef-(p.ef_decrease_per_week/7)
             if x.vac_ef < p.min_eff
                 x.vac_ef = p.min_eff
             end
@@ -678,13 +678,14 @@ function vac_update(x::Human)
                 if aux < p.vac_efficacy_fd
                     aux = p.vac_efficacy_fd
                 end
+                aux = ((1- x.vac_red)^comm)*aux
             elseif p.vac_effect == 2
-                aux = p.vac_efficacy
+                aux = ((1- x.vac_red)^comm)*p.vac_efficacy
             else
                 error("Vaccinating but no vac effect")
             end
-            red_com = x.vac_red#p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-            x.vac_ef = ((1-red_com)^comm)*aux
+           #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
+            x.vac_ef = aux
         end
         x.days_vac += 1
     end
