@@ -85,7 +85,7 @@ end
     vac_period::Int64 = 21
     sec_dose_comp::Float64 = 0.7
     daily_cov::Float64 = 0.008 ####also run for 0.008 per day
-    n_comor_comp::Float64 = 0.387
+    n_comor_comp::Float64 = 1.0
     vac_efficacy::Float64 = 0.95  #### 50:5:80
     vac_efficacy_fd::Float64 = vac_efficacy/2.0
     days_to_protection::Array{Int64,1} = [14;7]
@@ -98,19 +98,22 @@ end
     red_risk_perc::Float64 = 1.0
     reduction_protection::Float64 = 0.0
     fd_1::Int64 = 30 #capacidade diaria de vacinação
-    fd_2::Int64 = 6
-    sd1::Int64 = 24
+    fd_2::Int64 = 0
+    sd1::Int64 = fd_1
     sec_dose_delay::Int64 = vac_period
 
     days_Rt::Array{Int64,1} = [100;200;300]
     priority::Bool = false
     sec_strain_trans::Float64 = 1.25
-    ins_sec_strain::Bool = false
+    ins_sec_strain::Bool = true
     initialinf2::Int64 = 1
     max_vac_delay::Int64 = 42
     min_eff = 0.02
     ef_decrease_per_week = 0.05
     vac_effect::Int64 = 1
+    no_cap::Bool = true
+    strain_ef_red::Float64 = 0.0
+    mortality_inc::Float64 = 1.3
 end
 
 Base.@kwdef mutable struct ct_data_collect
@@ -320,12 +323,13 @@ function main(ip::ModelParameters,sim::Int64)
     # insert initial infected agents into the model
     # and setup the right swap function. 
     if p.calibration && !p.start_several_inf
-       
         insert_infected(PRE, p.initialinf, 4,1)[1]
             #insert_infected(REC, p.initialhi, 4)
     elseif p.start_several_inf
         N = herd_immu_dist_4(sim,1)
-        insert_infected(PRE, p.initialinf, 4, 1)[1]
+        if p.initialinf > 0
+            insert_infected(PRE, p.initialinf, 4, 1)[1]
+        end
         #findall(x->x.health in (MILD,INF,LAT,PRE,ASYMP),humans)
     else
         #applying_vac(sim)
@@ -462,7 +466,10 @@ function vac_selection()
     #pos2 = shuffle([pos_n_com;pos_y])
     pos2 = shuffle(pos_n_com)
     v = [pos_hcw; pos1; pos2]
-    if p.set_g_cov
+
+    if p.no_cap
+
+    elseif p.set_g_cov
         if p.cov_val*p.popsize > length(v)
             error("general population compliance is not enough to reach the coverage.")
             exit(1)
@@ -486,15 +493,15 @@ end
 
 function vac_index_new(l::Int64)
 
-    v1 = Array{Int64,1}(undef,p.modeltime);
-    v2 = Array{Int64,1}(undef,p.modeltime);
+    v1 = Array{Int64,1}(undef,p.popsize);
+    v2 = Array{Int64,1}(undef,p.popsize);
     n::Int64 = p.fd_2+p.sd1
     v1_aux::Bool = false
     v2_aux::Bool = false
     kk::Int64 = 2
 
     if p.single_dose
-        for i = 1:p.modeltime
+        for i = 1:p.popsize
             v1[i] = -1
             v2[i] = -1
            
@@ -516,7 +523,7 @@ function vac_index_new(l::Int64)
         end
         a = a+1
     else
-        for i = 1:p.modeltime
+        for i = 1:p.popsize
             v1[i] = -1
             v2[i] = -1
         end
@@ -656,31 +663,32 @@ function vac_update(x::Human)
     end =#
 
     if x.vac_status == 1
-        if x.days_vac == p.days_to_protection[x.vac_status]
+        if x.days_vac == p.days_to_protection[x.vac_status]#14
             red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
             aux = p.single_dose ? ((1-red_com)^comm)*(p.vac_efficacy) : ((1-red_com)^comm)*p.vac_efficacy_fd
             x.vac_ef = aux
         end
 
-        if x.days_vac > p.max_vac_delay
-            x.vac_ef = x.vac_ef-(p.ef_decrease_per_week/7)
-            if x.vac_ef < p.min_eff
-                x.vac_ef = p.min_eff
+        if !p.single_dose
+            if x.days_vac > p.max_vac_delay #42
+                x.vac_ef = x.vac_ef-(p.ef_decrease_per_week/7)#0.05/7
+                if x.vac_ef < p.min_eff #0.02
+                    x.vac_ef = p.min_eff
+                end
             end
         end
-
         x.days_vac += 1
         
     elseif x.vac_status == 2
-        if x.days_vac == p.days_to_protection[x.vac_status]
+        if x.days_vac == p.days_to_protection[x.vac_status]#7
             if p.vac_effect == 1
-                aux = (p.vac_efficacy-p.vac_efficacy_fd)+x.vac_ef
+                aux = (p.vac_efficacy-p.vac_efficacy_fd)+x.vac_ef #0.43 + x = second dose
                 if aux < p.vac_efficacy_fd
                     aux = p.vac_efficacy_fd
                 end
-                aux = ((1- x.vac_red)^comm)*aux
+                aux = ((1-x.vac_red)^comm)*aux
             elseif p.vac_effect == 2
-                aux = ((1- x.vac_red)^comm)*p.vac_efficacy
+                aux = ((1- x.vac_red)^comm)*p.vac_efficacy #0.95
             else
                 error("Vaccinating but no vac effect")
             end
@@ -1093,7 +1101,7 @@ function move_to_latent(x::Human)
     age_thres = [4, 19, 49, 64, 79, 999]
     g = findfirst(y-> y >= x.age, age_thres)
      
-    if rand() < (symp_pcts[g])*(1-x.vac_ef)
+    if rand() < (symp_pcts[g])*(1-x.vac_ef*(1-p.strain_ef_red)^(x.strain-1))
         x.swap = x.strain == 1 ? PRE : PRE2
     else
         x.swap = x.strain == 1 ? ASYMP : ASYMP2
@@ -1126,7 +1134,7 @@ function move_to_pre(x::Human)
     x.tis = 0   # reset time in state 
     x.exp = x.dur[3] # get the presymptomatic period
     x.strain < 0 && error("No strain - pre")
-    if rand() < (1-θ[x.ag])*(1-x.vac_ef)
+    if rand() < (1-θ[x.ag])*(1-x.vac_ef*(1-p.strain_ef_red)^(x.strain-1))
         x.swap = x.strain == 1 ? INF : INF2
     else 
         x.swap = x.strain == 1 ? MILD : MILD2
@@ -1208,9 +1216,10 @@ function move_to_inf(x::Human)
         else
             x.swap = x.strain == 1 ? HOS : HOS2
         end
-                     
+       
     else ## no hospital for this lucky (but severe) individual 
-        if rand() < mh[x.ag]
+        aux = x.age >= 60 ? (p.mortality_inc^(x.strain-1)) : 1
+        if rand() < mh[x.ag]*aux
             x.exp = x.dur[4]  
             x.swap = x.strain == 1 ? DED : DED2
         else 
@@ -1261,7 +1270,8 @@ function move_to_hospicu(x::Human)
 
     if swaphealth == HOS || swaphealth == HOS2
         x.hospicu = 1 
-        if rand() < mh[gg] ## person will die in the hospital 
+        aux = x.age >= 60 ? (p.mortality_inc^(x.strain-1)) : 1
+        if rand() < mh[gg]*aux ## person will die in the hospital 
             x.exp = muH 
             x.swap = x.strain == 1 ? DED : DED2
         else 
@@ -1270,8 +1280,9 @@ function move_to_hospicu(x::Human)
         end        
     end
     if swaphealth == ICU || swaphealth == ICU2
-        x.hospicu = 2         
-        if rand() < mc[gg] ## person will die in the ICU 
+        x.hospicu = 2 
+        aux = x.age >= 60 ? (p.mortality_inc^(x.strain-1)) : 1        
+        if rand() < mc[gg]*aux ## person will die in the ICU 
             x.exp = muC
             x.swap = x.strain == 1 ? DED : DED2
         else 
@@ -1391,7 +1402,7 @@ function dyntrans(sys_time, grps)
                     # tranmission dynamics
                         if  y.health == SUS && y.swap == UNDEF                  
                             beta = _get_betavalue(sys_time, xhealth)
-                            if rand() < beta*(1-y.vac_ef*(1-p.reduction_protection))
+                            if rand() < beta*(1-y.vac_ef*(1-p.reduction_protection)*(1-p.strain_ef_red)^(x.strain-1))
                                 totalinf += 1
                                 
                                 y.exp = y.tis   ## force the move to latent in the next time step.
