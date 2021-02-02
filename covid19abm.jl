@@ -107,6 +107,7 @@ end
     extra_dose_day::Int64 = 80
     vac_ef_eld_fd::Float64 = vac_efficacy_fd
     vac_ef_eld::Float64 = vac_efficacy
+    time_sec_strain::Int64 = 40
 
     days_Rt::Array{Int64,1} = [100;200;300]
     priority::Bool = false
@@ -343,14 +344,9 @@ function main(ip::ModelParameters,sim::Int64)
         insert_infected(PRE, 1, 4,1)[1]
     end    
     h_init1 = findall(x->x.health  in (LAT,MILD,MISO,INF,PRE,ASYMP),humans)
-
-    if p.ins_sec_strain
-        insert_infected(PRE, p.initialinf2, 4, 2)[1]
-    end
-    h_init2 = findall(x->x.health  in (LAT2,MILD2,INF2,PRE2,ASYMP2),humans)
-    ## save the preisolation isolation parameters
     h_init1 = [h_init1]
-    h_init2 = [h_init2]
+    h_init2 = []
+    ## save the preisolation isolation parameters
     _fpreiso = p.fpreiso
     p.fpreiso = 0
 
@@ -388,6 +384,12 @@ function main(ip::ModelParameters,sim::Int64)
                 end
             end        
             for st = 1:p.modeltime
+                if p.ins_sec_strain && st == p.time_sec_strain
+                    insert_infected(PRE, p.initialinf2, 4, 2)[1]
+                    h_init2 = findall(x->x.health  in (LAT2,MILD2,INF2,PRE2,ASYMP2),humans)
+                    h_init2 = [h_init2]
+                end
+                
                 # start of day
                 #println("$st")
                 if time_vac <= (length(v1)-1)
@@ -431,7 +433,7 @@ function main(ip::ModelParameters,sim::Int64)
             
             if p.days_before > 0
 
-                if length(v3) > length(v1)
+                if length(v1_e) > length(v1)
 
                     tt = min(p.days_before,length(v1)-1)
                     for time_vac_aux = 1:tt#p.days_before
@@ -457,7 +459,7 @@ function main(ip::ModelParameters,sim::Int64)
                             end
                         end
                     end
-                    tt = min(p.days_before,length(v3)-1)
+                    tt = min(p.days_before,length(v1_e)-1)
                     for time_vac_aux = length(v1):tt#p.days_before
                         time_vac = time_vac_aux
                         #= vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
@@ -482,7 +484,7 @@ function main(ip::ModelParameters,sim::Int64)
                         end
                     end
                 else ###length>length
-                    tt = min(p.days_before,length(v3)-1)
+                    tt = min(p.days_before,length(v1_e)-1)
                     for time_vac_aux = 1:tt#p.days_before
                         time_vac = time_vac_aux
                         vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
@@ -507,7 +509,7 @@ function main(ip::ModelParameters,sim::Int64)
                         end
                     end
                     tt = min(p.days_before,length(v1)-1)
-                    for time_vac_aux = length(v3):tt#p.days_before
+                    for time_vac_aux = length(v1_e):tt#p.days_before
                         time_vac = time_vac_aux
                          vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
                         resize!(vac_ind, length(vac_ind2)) 
@@ -534,6 +536,11 @@ function main(ip::ModelParameters,sim::Int64)
             end        
             for st = 1:p.modeltime
                 # start of day
+                if p.ins_sec_strain && st == p.time_sec_strain
+                    insert_infected(PRE, p.initialinf2, 4, 2)[1]
+                    h_init2 = findall(x->x.health  in (LAT2,MILD2,INF2,PRE2,ASYMP2),humans)
+                    h_init2 = [h_init2]
+                end
                 #println("$st")
                 if time_vac <= (length(v1)-1)##vaccinating priority
                     #if st%7 > 0 #we are vaccinating everyday
@@ -544,7 +551,7 @@ function main(ip::ModelParameters,sim::Int64)
                         end
                     #end
                 end
-                if time_vac <= (length(v3)-1)###vaccinating general
+                if time_vac <= (length(v1_e)-1)###vaccinating general
                     vac_ind2_e = vac_time!(vac_ind_e,time_vac,v1_e,v2_e)
                     resize!(vac_ind_e, length(vac_ind2_e))
                     for i = 1:length(vac_ind2_e)
@@ -570,6 +577,11 @@ function main(ip::ModelParameters,sim::Int64)
     else
         for st = 1:p.modeltime
             # start of day
+            if p.ins_sec_strain && st == p.time_sec_strain
+                insert_infected(PRE, p.initialinf2, 4, 2)[1]
+                h_init2 = findall(x->x.health  in (LAT2,MILD2,INF2,PRE2,ASYMP2),humans)
+                h_init2 = [h_init2]
+            end
             #println("$st")
             #=if st == p.tpreiso ## time to introduce testing
             global  p.fpreiso = _fpreiso
@@ -954,7 +966,7 @@ function vac_index_new_e(l::Int64,l2::Int64)
         v1_aux = false
         v2_aux = false
         while !v1_aux || !v2_aux
-            println("$kk $(v3[kk-1]) $(v4[kk-1])")
+            #println("$kk $(v3[kk-1]) $(v4[kk-1])")
             aux_ = p.sd1[jj]-((v2[kk]-v2[kk-1])+(v1[kk]-v1[kk-1]))
             if aux_ < 0
                 aux = 0
@@ -1003,7 +1015,7 @@ function vac_index_new_e(l::Int64,l2::Int64)
         a2 = findfirst(x-> x == -1, v4)
 
     end
-    println("finished")
+    #println("finished")
     return v1[1:(a-1)],v2[1:(a-1)],v3[1:(a2-1)],v4[1:(a2-1)]
 end 
 
@@ -1091,7 +1103,7 @@ function vac_update(x::Human)
     if x.vac_status == 1
         if x.days_vac == p.days_to_protection[x.vac_status]#14
             red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-            aux_ = x.age >= 65 ? p.vac_ef_eld_fd : p.p.vac_efficacy_fd
+            aux_ = x.age >= 65 ? p.vac_ef_eld_fd : p.vac_efficacy_fd
             aux = p.single_dose ? ((1-red_com)^comm)*aux_ : ((1-red_com)^comm)*aux_
             x.vac_ef = aux
         end
