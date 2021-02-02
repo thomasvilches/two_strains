@@ -97,10 +97,16 @@ end
 
     red_risk_perc::Float64 = 1.0
     reduction_protection::Float64 = 0.0
-    fd_1::Int64 = 30 #capacidade diaria de vacinação
+    fd_1::Array{Int64,1} = [8;25;45] #daily vaccination rate
     fd_2::Int64 = 0
-    sd1::Int64 = fd_1
+    sd1::Array{Int64,1} = fd_1
     sec_dose_delay::Int64 = vac_period
+    days_change_vac_rate::Array{Int64,1} = [20;40]
+    extra_dose::Bool = false
+    extra_dose_n::Int64 = 15
+    extra_dose_day::Int64 = 80
+    vac_ef_eld_fd::Float64 = vac_efficacy_fd
+    vac_ef_eld::Float64 = vac_efficacy
 
     days_Rt::Array{Int64,1} = [100;200;300]
     priority::Bool = false
@@ -353,62 +359,213 @@ function main(ip::ModelParameters,sim::Int64)
 
     # start the time loop
     if p.vaccinating
-
-        vac_ind2 = vac_selection()
-        vac_ind = Array{Int64,1}(undef,length(vac_ind2))
-        for i = 1:length(vac_ind2)
-            vac_ind[i] = vac_ind2[i]
-        end
-        v1,v2 = vac_index_new(length(vac_ind))
-        
         time_vac::Int64 = 1
-        
-        if p.days_before > 0
-            tt = min(p.days_before,length(v1)-1)
-            for time_vac_aux = 1:tt#p.days_before
-               time_vac = time_vac_aux
-                vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
-                resize!(vac_ind, length(vac_ind2))
-                for i = 1:length(vac_ind2)
-                    vac_ind[i] = vac_ind2[i]
-                end
-                for x in humans
-                    vac_update(x)
-                end
-                if time_vac_aux%6 == 0
-                    for x in humans
-                        vac_update(x)
-                    end
-                end
+        if !p.extra_dose
+            vac_ind2 = vac_selection()
+            vac_ind = Array{Int64,1}(undef,length(vac_ind2))
+            for i = 1:length(vac_ind2)
+                vac_ind[i] = vac_ind2[i]
             end
-        end        
-        for st = 1:p.modeltime
-            # start of day
-            #println("$st")
-            if time_vac<=(length(v1)-1)
-                #if st%7 > 0 #we are vaccinating everyday
+            v1,v2 = vac_index_new(length(vac_ind))
+            
+            if p.days_before > 0
+                tt = min(p.days_before,length(v1)-1)
+                for time_vac_aux = 1:tt#p.days_before
+                time_vac = time_vac_aux
                     vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
-                    #vac_ind = [vac_ind vac_ind2]
                     resize!(vac_ind, length(vac_ind2))
                     for i = 1:length(vac_ind2)
                         vac_ind[i] = vac_ind2[i]
                     end
-                    time_vac += 1
-                #end
+                    for x in humans
+                        vac_update(x)
+                    end
+                    if time_vac_aux%6 == 0
+                        for x in humans
+                            vac_update(x)
+                        end
+                    end
+                end
+            end        
+            for st = 1:p.modeltime
+                # start of day
+                #println("$st")
+                if time_vac <= (length(v1)-1)
+                    #if st%7 > 0 #we are vaccinating everyday
+                        vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
+                        #vac_ind = [vac_ind vac_ind2]
+                        resize!(vac_ind, length(vac_ind2))
+                        for i = 1:length(vac_ind2)
+                            vac_ind[i] = vac_ind2[i]
+                        end
+                        time_vac += 1
+                    #end
+                end
+                #=if st == p.tpreiso ## time to introduce testing
+                global  p.fpreiso = _fpreiso
+                end=#
+                _get_model_state(st, hmatrix) ## this datacollection needs to be at the start of the for loop
+                dyntrans(st, grps)
+                if st in p.days_Rt
+                    aux1 = findall(x->x.swap == LAT,humans)
+                    h_init1 = vcat(h_init1,[aux1])
+                    aux2 = findall(x->x.swap == LAT2,humans)
+                    h_init2 = vcat(h_init2,[aux2])
+                end
+                sw = time_update()
+                # end of day
             end
-            #=if st == p.tpreiso ## time to introduce testing
-            global  p.fpreiso = _fpreiso
-            end=#
-            _get_model_state(st, hmatrix) ## this datacollection needs to be at the start of the for loop
-            dyntrans(st, grps)
-            if st in p.days_Rt
-                aux1 = findall(x->x.swap == LAT,humans)
-                h_init1 = vcat(h_init1,[aux1])
-                aux2 = findall(x->x.swap == LAT2,humans)
-                h_init2 = vcat(h_init2,[aux2])
+        else ###when extradose is activated, it means that we need to vaccinate in two different vectors
+            vac_ind2,vac_ind2_e = vac_selection_e()
+            vac_ind = Array{Int64,1}(undef,length(vac_ind2))
+            vac_ind_e = Array{Int64,1}(undef,length(vac_ind2_e))
+            for i = 1:length(vac_ind2)
+                vac_ind[i] = vac_ind2[i]
             end
-            sw = time_update()
-            # end of day
+            for i = 1:length(vac_ind2_e)
+                vac_ind_e[i] = vac_ind2_e[i]
+            end
+            v1,v2,v1_e,v2_e = vac_index_new_e(length(vac_ind),length(vac_ind_e))
+            
+            #time_vac::Int64 = 1
+            
+            if p.days_before > 0
+
+                if length(v3) > length(v1)
+
+                    tt = min(p.days_before,length(v1)-1)
+                    for time_vac_aux = 1:tt#p.days_before
+                        time_vac = time_vac_aux
+                        vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
+                        resize!(vac_ind, length(vac_ind2))
+                    
+                        vac_ind2_e = vac_time!(vac_ind_e,time_vac,v1_e,v2_e)
+                        resize!(vac_ind_e, length(vac_ind2_e))
+
+                        for i = 1:length(vac_ind2)
+                            vac_ind[i] = vac_ind2[i]
+                        end
+                        for i = 1:length(vac_ind2_e)
+                            vac_ind_e[i] = vac_ind2_e[i]
+                        end
+                        for x in humans
+                            vac_update(x)
+                        end
+                        if time_vac_aux%6 == 0
+                            for x in humans
+                                vac_update(x)
+                            end
+                        end
+                    end
+                    tt = min(p.days_before,length(v3)-1)
+                    for time_vac_aux = length(v1):tt#p.days_before
+                        time_vac = time_vac_aux
+                        #= vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
+                        resize!(vac_ind, length(vac_ind2)) =#
+                    
+                        vac_ind2_e = vac_time!(vac_ind_e,time_vac,v1_e,v2_e)
+                        resize!(vac_ind_e, length(vac_ind2_e))
+
+                       #=  for i = 1:length(vac_ind2)
+                            vac_ind[i] = vac_ind2[i]
+                        end =#
+                        for i = 1:length(vac_ind2_e)
+                            vac_ind_e[i] = vac_ind2_e[i]
+                        end
+                        for x in humans
+                            vac_update(x)
+                        end
+                        if time_vac_aux%6 == 0
+                            for x in humans
+                                vac_update(x)
+                            end
+                        end
+                    end
+                else ###length>length
+                    tt = min(p.days_before,length(v3)-1)
+                    for time_vac_aux = 1:tt#p.days_before
+                        time_vac = time_vac_aux
+                        vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
+                        resize!(vac_ind, length(vac_ind2))
+                    
+                        vac_ind2_e = vac_time!(vac_ind_e,time_vac,v1_e,v2_e)
+                        resize!(vac_ind_e, length(vac_ind2_e))
+
+                        for i = 1:length(vac_ind2)
+                            vac_ind[i] = vac_ind2[i]
+                        end
+                        for i = 1:length(vac_ind2_e)
+                            vac_ind_e[i] = vac_ind2_e[i]
+                        end
+                        for x in humans
+                            vac_update(x)
+                        end
+                        if time_vac_aux%6 == 0
+                            for x in humans
+                                vac_update(x)
+                            end
+                        end
+                    end
+                    tt = min(p.days_before,length(v1)-1)
+                    for time_vac_aux = length(v3):tt#p.days_before
+                        time_vac = time_vac_aux
+                         vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
+                        resize!(vac_ind, length(vac_ind2)) 
+                    
+                      #=   vac_ind2_e = vac_time!(vac_ind_e,time_vac,v1_e,v2_e)
+                        resize!(vac_ind_e, length(vac_ind2_e)) =#
+
+                        for i = 1:length(vac_ind2)
+                            vac_ind[i] = vac_ind2[i]
+                        end 
+                        #= for i = 1:length(vac_ind2_e)
+                            vac_ind_e[i] = vac_ind2_e[i]
+                        end =#
+                        for x in humans
+                            vac_update(x)
+                        end
+                        if time_vac_aux%6 == 0
+                            for x in humans
+                                vac_update(x)
+                            end
+                        end
+                    end
+                end
+            end        
+            for st = 1:p.modeltime
+                # start of day
+                #println("$st")
+                if time_vac <= (length(v1)-1)##vaccinating priority
+                    #if st%7 > 0 #we are vaccinating everyday
+                        vac_ind2 = vac_time!(vac_ind,time_vac,v1,v2)
+                        resize!(vac_ind, length(vac_ind2))
+                        for i = 1:length(vac_ind2)
+                            vac_ind[i] = vac_ind2[i]
+                        end
+                    #end
+                end
+                if time_vac <= (length(v3)-1)###vaccinating general
+                    vac_ind2_e = vac_time!(vac_ind_e,time_vac,v1_e,v2_e)
+                    resize!(vac_ind_e, length(vac_ind2_e))
+                    for i = 1:length(vac_ind2_e)
+                        vac_ind_e[i] = vac_ind2_e[i]
+                    end
+                end
+                time_vac += 1
+                #=if st == p.tpreiso ## time to introduce testing
+                global  p.fpreiso = _fpreiso
+                end=#
+                _get_model_state(st, hmatrix) ## this datacollection needs to be at the start of the for loop
+                dyntrans(st, grps)
+                if st in p.days_Rt
+                    aux1 = findall(x->x.swap == LAT,humans)
+                    h_init1 = vcat(h_init1,[aux1])
+                    aux2 = findall(x->x.swap == LAT2,humans)
+                    h_init2 = vcat(h_init2,[aux2])
+                end
+                sw = time_update()
+                # end of day
+            end
         end
     else
         for st = 1:p.modeltime
@@ -491,11 +648,67 @@ function vac_selection()
 end
 
 
+function vac_selection_e()
+    
+    pos = findall(x-> humans[x].age>=20 && humans[x].age<65,1:length(humans))
+    pos_hcw = sample(pos,Int(round(p.hcw_vac_comp*p.hcw_prop*p.popsize)),replace = false)
+    
+    for i in pos_hcw
+        humans[i].hcw = true
+    end
+
+    pos_com = findall(x->humans[x].comorbidity == 1 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=18, 1:length(humans))
+    pos_com = sample(pos_com,Int(round(p.comor_comp*length(pos_com))),replace=false)
+
+
+    pos_eld = findall(x-> humans[x].age>=65, 1:length(humans))
+    pos_eld = sample(pos_eld,Int(round(p.eld_comp*length(pos_eld))),replace=false)
+
+    pos_n_com = findall(x->humans[x].comorbidity == 0 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=18, 1:length(humans))
+    pos_n_com = sample(pos_n_com,Int(round(length(pos_n_com))),replace=false)
+    #pos_y = findall(x-> humans[x].age<18, 1:length(humans))
+    #pos_y = sample(pos_y,Int(round(p.young_comp*length(pos_y))),replace=false)
+
+    if p.priority
+        aux1 = findall(y->humans[y].comorbidity==1,pos_eld)
+        pos1 = shuffle([pos_com;pos_eld[aux1]])
+        aux1 = findall(y->humans[y].comorbidity==0,pos_eld)
+        pos1 = [pos1;pos_eld[aux1]]
+    else
+        pos1 = shuffle([pos_com;pos_eld])
+    end
+    #pos2 = shuffle([pos_n_com;pos_y])
+    pos2 = shuffle(pos_n_com)
+    v = [pos_hcw; pos1]
+
+    if p.no_cap
+
+    elseif p.set_g_cov
+        if p.cov_val*p.popsize > length(v)
+            error("general population compliance is not enough to reach the coverage.")
+            exit(1)
+        else
+            aux = Int(round(p.cov_val*p.popsize))
+            v = v[1:aux]
+        end
+    else
+        if p.fixed_cov*p.popsize > length(v)
+            error("general population compliance is not enough to reach the coverage.")
+            exit(1)
+        else
+            aux = Int(round(p.fixed_cov*p.popsize))
+            v = v[1:aux]
+        end
+    end
+
+    return v,pos2
+end
+
 function vac_index_new(l::Int64)
 
     v1 = Array{Int64,1}(undef,p.popsize);
     v2 = Array{Int64,1}(undef,p.popsize);
-    n::Int64 = p.fd_2+p.sd1
+    #n::Int64 = p.fd_2+p.sd1
     v1_aux::Bool = false
     v2_aux::Bool = false
     kk::Int64 = 2
@@ -527,15 +740,23 @@ function vac_index_new(l::Int64)
             v1[i] = -1
             v2[i] = -1
         end
-
+        jj::Int64 = 1 ###which vac rate we are looking at
         v1[1] = 0
         v2[1] = 0
         eligible::Int64 = 0
+        extra_d::Int64 = 0
         for i = 2:(p.sec_dose_delay+1)
-            v1[i] = (i-1)*p.fd_1
+            #aux = map(x-> v1[x]-v1[x-1],1:(i-1))
+            v1[i] = v1[i-1]+p.fd_1[jj]+extra_d
             v2[i] = 0
             if i > (p.vac_period+1)
                 eligible = eligible+(v1[i-p.vac_period]-v1[i-p.vac_period-1])
+            end
+            if !(jj > length(p.days_change_vac_rate)) && i-1 == p.days_change_vac_rate[jj]
+                jj += 1
+            end
+            if i-1 == p.extra_dose_day
+                extra_d = p.extra_dose_n
             end
         end
 
@@ -545,9 +766,10 @@ function vac_index_new(l::Int64)
         #eligible::Int64 = 0
         last_v2::Int64 = 0
         while !v1_aux || !v2_aux
-        
+            
+            n = p.sd1[jj]+p.fd_2+extra_d
             eligible = eligible+(v1[kk-p.vac_period]-v1[kk-p.vac_period-1])
-            n1_a = v1_aux ? n : p.sd1
+            n1_a = v1_aux ? n : p.sd1[jj]+extra_d
             v2_1 = min(n1_a,eligible-last_v2)
 
             v2[kk] = last_v2+v2_1
@@ -556,6 +778,12 @@ function vac_index_new(l::Int64)
            
             v1[kk] = v1[kk-1]+n_aux
 
+            if !(jj > length(p.days_change_vac_rate)) && kk-1 == p.days_change_vac_rate[jj] 
+                jj += 1
+            end
+            if kk-1 == p.extra_dose_day
+                extra_d = p.extra_dose_n
+            end
             
             if v1[kk] >= l
                 v1[kk] = l
@@ -579,6 +807,204 @@ function vac_index_new(l::Int64)
     end
 
     return v1[1:(a-1)],v2[1:(a-1)]
+end 
+
+
+function vac_index_new_e(l::Int64,l2::Int64)
+
+    v1 = Array{Int64,1}(undef,p.popsize);
+    v2 = Array{Int64,1}(undef,p.popsize);
+    v3 = Array{Int64,1}(undef,p.popsize);
+    v4 = Array{Int64,1}(undef,p.popsize);
+    #n::Int64 = p.fd_2+p.sd1
+    v1_aux::Bool = false
+    v2_aux::Bool = false
+    kk::Int64 = 2
+
+    if p.single_dose
+        for i = 1:p.popsize
+            v1[i] = -1
+            v2[i] = -1
+           
+        end
+        v1[1] = 0
+        while !v1_aux
+            v1[kk] = v1[kk-1]+n
+            if v1[kk] >= l
+                v1[kk] = l
+                v1_aux = true
+            end
+            kk += 1
+
+        end
+        a = findfirst(x-> x == l, v1)
+
+        for i = (a+1):length(v1)
+            v1[i] = -1
+        end
+        a = a+1
+    else
+        for i = 1:p.popsize
+            v1[i] = -1
+            v2[i] = -1
+            v3[i] = -1
+            v4[i] = -1
+        end
+        jj::Int64 = 1 ###which vac rate we are looking at
+        v1[1] = 0
+        v2[1] = 0
+        v3[1] = 0
+        v4[1] = 0
+        eligible::Int64 = 0
+        extra_d::Int64 = 0
+
+        for i = 2:(p.sec_dose_delay+1)
+            #aux = map(x-> v1[x]-v1[x-1],1:(i-1))
+            v1[i] = v1[i-1]+p.fd_1[jj]
+            v2[i] = 0
+            
+            if i > (p.vac_period+1)
+                eligible = eligible+(v1[i-p.vac_period]-v1[i-p.vac_period-1])
+            end
+            if !(jj > length(p.days_change_vac_rate)) && i-1 == p.days_change_vac_rate[jj]
+                jj += 1
+            end
+            if v1[kk] >= l
+                v1[kk] = l
+                v1_aux = true
+                break
+            end
+           
+        end
+
+        kk = p.sec_dose_delay+2
+        #eligible::Int64 = 0
+        last_v2::Int64 = 0
+        while !v1_aux || !v2_aux
+            
+            n = p.sd1[jj]+p.fd_2
+            eligible = eligible+(v1[kk-p.vac_period]-v1[kk-p.vac_period-1])
+            n1_a = v1_aux ? n : p.sd1[jj]
+            v2_1 = min(n1_a,eligible-last_v2)
+
+            v2[kk] = last_v2+v2_1
+            last_v2 = v2[kk]
+            n_aux = n-v2_1
+           
+            v1[kk] = v1[kk-1]+n_aux
+
+            if !(jj > length(p.days_change_vac_rate)) && kk-1 == p.days_change_vac_rate[jj] 
+                jj += 1
+            end
+            
+            if v1[kk] >= l
+                v1[kk] = l
+                v1_aux = true
+            end
+
+            if v2[kk] >= l
+                v2[kk] = l
+                v2_aux = true
+            end
+            kk += 1
+
+        end
+
+        a = findfirst(x-> x == -1, v2)
+
+        tf::Int64 = a-1 ###time where the priority group is all vaccinated
+        ##########################################
+        #### Now, lets take care of v3 and v4 = general population
+        ##################################################
+        for i = 2:(p.extra_dose_day+1)
+            v3[i] = 0
+            v4[i] = 0
+        end
+
+        eligible = 0
+        aux1 = findfirst(x-> x > p.extra_dose_day,p.days_change_vac_rate)
+        if aux1 == nothing
+            jj = length(p.days_change_vac_rate)+1
+        else
+            jj = aux1
+        end
+
+        for i = (p.extra_dose_day+2):(p.extra_dose_day+p.sec_dose_delay+1)
+            #aux = map(x-> v1[x]-v1[x-1],1:(i-1))
+            aux_ = p.sd1[jj]-((v2[i]-v2[i-1])+(v1[i]-v1[i-1]))
+            if aux_ < 0
+                aux = 0
+            end
+            n1 = i > tf ? p.extra_dose_n+p.fd_1[jj] : p.extra_dose_n+aux_
+            v3[i] = v3[i-1]+n1
+            v4[i] = 0
+
+            if i > (p.vac_period+1)
+              eligible = eligible+(v3[i-p.vac_period]-v3[i-p.vac_period-1])
+            end
+             if !(jj > length(p.days_change_vac_rate)) && i-1 == p.days_change_vac_rate[jj]
+                jj += 1
+            end 
+           
+        end
+
+        kk = p.extra_dose_day+p.sec_dose_delay+2
+        #eligible::Int64 = 0
+        last_v2 = 0
+        v1_aux = false
+        v2_aux = false
+        while !v1_aux || !v2_aux
+            println("$kk $(v3[kk-1]) $(v4[kk-1])")
+            aux_ = p.sd1[jj]-((v2[kk]-v2[kk-1])+(v1[kk]-v1[kk-1]))
+            if aux_ < 0
+                aux = 0
+            end
+
+            n1 = kk > tf ? p.extra_dose_n+p.sd1[jj] : p.extra_dose_n+aux_
+            n = n1+p.fd_2
+            eligible = eligible+(v3[kk-p.vac_period]-v3[kk-p.vac_period-1])
+            n1_a = v1_aux ? n : n1
+            v2_1 = min(n1_a,eligible-last_v2)
+
+            v4[kk] = last_v2+v2_1
+            last_v2 = v4[kk]
+            n_aux = n-v2_1
+           
+            v3[kk] = v3[kk-1]+n_aux
+
+            if !(jj > length(p.days_change_vac_rate)) && kk-1 == p.days_change_vac_rate[jj] 
+                jj += 1
+            end
+            
+            if v3[kk] >= l2
+                v3[kk] = l2
+                v1_aux = true
+            end
+
+            if v4[kk] >= l2
+                v4[kk] = l2
+                v2_aux = true
+            end
+            kk += 1
+
+        end
+
+        a = findfirst(x-> x == l, v1)
+
+        for i = (a+1):length(v1)
+            v1[i] = -1
+        end
+        a = findfirst(x-> x == -1, v2)
+
+        a2 = findfirst(x-> x == l2, v3)
+        for i = (a2+1):length(v3)
+            v3[i] = -1
+        end
+        a2 = findfirst(x-> x == -1, v4)
+
+    end
+    println("finished")
+    return v1[1:(a-1)],v2[1:(a-1)],v3[1:(a2-1)],v4[1:(a2-1)]
 end 
 
 function vac_time!(vac_ind::Array{Int64,1},t::Int64,n_1_dose::Array{Int64,1},n_2_dose::Array{Int64,1})
@@ -665,7 +1091,8 @@ function vac_update(x::Human)
     if x.vac_status == 1
         if x.days_vac == p.days_to_protection[x.vac_status]#14
             red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-            aux = p.single_dose ? ((1-red_com)^comm)*(p.vac_efficacy) : ((1-red_com)^comm)*p.vac_efficacy_fd
+            aux_ = x.age >= 65 ? p.vac_ef_eld_fd : p.p.vac_efficacy_fd
+            aux = p.single_dose ? ((1-red_com)^comm)*aux_ : ((1-red_com)^comm)*aux_
             x.vac_ef = aux
         end
 
@@ -681,14 +1108,15 @@ function vac_update(x::Human)
         
     elseif x.vac_status == 2
         if x.days_vac == p.days_to_protection[x.vac_status]#7
+            aux_ = x.age >= 65 ? p.vac_ef_eld : p.vac_efficacy
             if p.vac_effect == 1
-                aux = (p.vac_efficacy-p.vac_efficacy_fd)+x.vac_ef #0.43 + x = second dose
-                if aux < p.vac_efficacy_fd
-                    aux = p.vac_efficacy_fd
+                aux = ((1-x.vac_red)^comm)*(aux_-p.vac_efficacy_fd)+x.vac_ef #0.43 + x = second dose
+                if aux < ((1-x.vac_red)^comm)*p.vac_efficacy_fd
+                    aux = ((1-x.vac_red)^comm)*p.vac_efficacy_fd
                 end
-                aux = ((1-x.vac_red)^comm)*aux
+    
             elseif p.vac_effect == 2
-                aux = ((1- x.vac_red)^comm)*p.vac_efficacy #0.95
+                aux = ((1- x.vac_red)^comm)*aux_ #0.95
             else
                 error("Vaccinating but no vac effect")
             end
