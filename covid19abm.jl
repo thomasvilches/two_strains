@@ -77,9 +77,9 @@ end
     vaccinating_appendix::Bool = false
     
     
-    hcw_vac_comp::Float64 = 0.7
+    hcw_vac_comp::Float64 = 0.9
     hcw_prop::Float64 = 0.05 #prop que é trabalhador da saude
-    comor_comp::Float64 = 0.5 #prop comorbidade tomam
+    comor_comp::Float64 = 0.7 #prop comorbidade tomam
     eld_comp::Float64 = 0.70
     young_comp::Float64 = 0.22
     vac_period::Int64 = 21
@@ -537,7 +537,7 @@ function main(ip::ModelParameters,sim::Int64)
             for st = 1:p.modeltime
                 # start of day
                 if p.ins_sec_strain && st == p.time_sec_strain
-                    insert_infected(PRE, p.initialinf2, 4, 2)[1]
+                    insert_infected(PRE, p.initialinf2, 4, 2)
                     h_init2 = findall(x->x.health  in (LAT2,MILD2,INF2,PRE2,ASYMP2),humans)
                     h_init2 = [h_init2]
                 end
@@ -1103,8 +1103,12 @@ function vac_update(x::Human)
     if x.vac_status == 1
         if x.days_vac == p.days_to_protection[x.vac_status]#14
             red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-            aux_ = x.age >= 65 ? p.vac_ef_eld_fd : p.vac_efficacy_fd
-            aux = p.single_dose ? ((1-red_com)^comm)*aux_ : ((1-red_com)^comm)*aux_
+            if p.single_dose
+                aux_ = x.age >= 65 ? p.vac_ef_eld : p.vac_efficacy
+            else
+                aux_ = x.age >= 65 ? p.vac_ef_eld_fd : p.vac_efficacy_fd
+            end
+            aux = ((1-red_com)^comm)*aux_
             x.vac_ef = aux
         end
 
@@ -1121,10 +1125,11 @@ function vac_update(x::Human)
     elseif x.vac_status == 2
         if x.days_vac == p.days_to_protection[x.vac_status]#7
             aux_ = x.age >= 65 ? p.vac_ef_eld : p.vac_efficacy
+            aux_2 = x.age >= 65 ? p.vac_ef_eld_fd : p.vac_efficacy_fd
             if p.vac_effect == 1
-                aux = ((1-x.vac_red)^comm)*(aux_-p.vac_efficacy_fd)+x.vac_ef #0.43 + x = second dose
-                if aux < ((1-x.vac_red)^comm)*p.vac_efficacy_fd
-                    aux = ((1-x.vac_red)^comm)*p.vac_efficacy_fd
+                aux = ((1-x.vac_red)^comm)*(aux_-aux_2)+x.vac_ef #0.43 + x = second dose
+                if aux < ((1-x.vac_red)^comm)*aux_2
+                    aux = ((1-x.vac_red)^comm)*aux_2
                 end
     
             elseif p.vac_effect == 2
