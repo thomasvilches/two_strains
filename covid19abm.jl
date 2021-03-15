@@ -115,7 +115,7 @@ end
     strain_ef_red::Float64 = 0.0 #reduction in efficacy against second strain
     mortality_inc::Float64 = 1.3 #The mortality increase when infected by strain 2
 
-    time_change_contact::Array{Int64,1} = [999]#map(x->x-50,[231;233;235;237;239;241;243;245;247;249]) #times for change in contact average
+    time_change_contact::Array{Int64,1} = [999]#map(x->x-30,[231;233;235;237;239;241;243;245;247;249]) #times for change in contact average
     change_rate_values::Array{Float64,1} = [1.0]#map(x->x*2-1,[1.01;1.02;1.03;1.04;1.05;1.06;1.07;1.08;1.09;1.10]) # values of change rate
     contact_change_rate::Float64 = 1.0 #the rate
 end
