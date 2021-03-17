@@ -26,7 +26,10 @@ Base.@kwdef mutable struct Human
     tracedxp::Int16 = 0 ## the trace is killed after tracedxp amount of days
     comorbidity::Int8 = 0 ##does the individual has any comorbidity?
     vac_status::Int8 = 0 ##
-    vac_ef::Float16 = 0.0 
+    vac_ef_symp::Float16 = 0.0 
+    vac_ef_inf::Float16 = 0.0 
+    vac_ef_sev::Float16 = 0.0
+
     got_inf::Bool = false
     herd_im::Bool = false
     hospicu::Int8 = -1
@@ -36,6 +39,7 @@ Base.@kwdef mutable struct Human
     vac_red::Float64 = 0.0
     first_one::Bool = false
     strain::Int16 = -1
+    index_day::Int64 = 1
 end
 
 ## default system parameters
@@ -79,9 +83,14 @@ end
     eld_comp::Float64 = 0.70
     vac_period::Int64 = 21 #period between two doses (minimum)
     n_comor_comp::Float64 = 1.0
-    vac_efficacy::Float64 = 0.95  #### #vac efficacy
-    vac_efficacy_fd::Float64 = vac_efficacy/2.0 #vac efficacy in first dose
-    days_to_protection::Array{Int64,1} = [14;7]
+    min_age_vac::Int64 = 18
+    
+    days_to_protection::Array{Array{Int64,1},1} = [[14],[0;14]]
+    vac_efficacy_inf::Array{Array{Float64,1},1} = [[0.46],[0.6;0.93]]  #### 50:5:80
+    vac_efficacy_symp::Array{Array{Float64,1},1} = [[0.921],[0.921;0.941]]  #### 50:5:80
+    vac_efficacy_sev::Array{Array{Float64,1},1} = [[0.802],[0.941;1.0]]  #### 50:5:80
+
+
     vaccinating::Bool = false #vaccinating?
     single_dose::Bool = false #unique dose
     drop_rate::Float64 = 0.0 #probability of not getting second dose
@@ -97,8 +106,6 @@ end
     extra_dose::Bool = false #if it is turned on, extradoses are given to general population
     extra_dose_n::Int64 = 0 #how many
     extra_dose_day::Int64 = 80 #when extra doses are implemented
-    vac_ef_eld_fd::Float64 = vac_efficacy_fd #efficacy in elderly people for first dose
-    vac_ef_eld::Float64 = vac_efficacy #efficacy in elderly people
     days_Rt::Array{Int64,1} = [100;200;300] #days to get Rt
 
     priority::Bool = false #prioritizing commorbid
@@ -109,7 +116,6 @@ end
 
     max_vac_delay::Int64 = 42 #max delay before protection starts waning
     min_eff = 0.02 #min efficacy when waning
-    ef_decrease_per_week = 0.05 #decrease in efficacy per week
     vac_effect::Int64 = 1 #vac effect, if 1 the difference between doses is added to first, if 2 the second dose is always vac_efficacy
     no_cap::Bool = true ## no maximum coverage
     strain_ef_red::Float64 = 0.0 #reduction in efficacy against second strain
@@ -166,7 +172,7 @@ function runsim(simnum, ip::ModelParameters)
 
      ##getting info about vac, comorbidity
    # vac_idx = [x.vac_status for x in humans]
-   vac_ef_i = [x.vac_ef for x in humans]
+   #vac_ef_i = [x.vac_ef for x in humans]
    # comorb_idx = [x.comorbidity for x in humans]
    # ageg = [x.ag for x = humans ]
 
@@ -284,7 +290,7 @@ function runsim(simnum, ip::ModelParameters)
     end
 
     #return (a=all, g1=ag1, g2=ag2, g3=ag3, g4=ag4, g5=ag5, infectors=infectors, vi = vac_idx,ve=vac_ef_i,com = comorb_idx,n_vac = n_vac,n_inf_vac = n_inf_vac,n_inf_nvac = n_inf_nvac)
-    return (a=all, g1=ag1, g2=ag2, g3=ag3, g4=ag4, g5=ag5,g6=ag6, infectors=infectors, ve=vac_ef_i,
+    return (a=all, g1=ag1, g2=ag2, g3=ag3, g4=ag4, g5=ag5,g6=ag6, infectors=infectors,
     com_v1 = n_com_vac1,ncom_v1 = n_ncom_vac1,
     com_v2 = n_com_vac2,ncom_v2 = n_ncom_vac2,
     com_t=n_com_total,ncom_t=n_ncom_total,
@@ -499,14 +505,14 @@ function vac_selection()
         humans[i].hcw = true
     end
 
-    pos_com = findall(x->humans[x].comorbidity == 1 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=18, 1:length(humans))
+    pos_com = findall(x->humans[x].comorbidity == 1 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=p.min_age_vac, 1:length(humans))
     pos_com = sample(pos_com,Int(round(p.comor_comp*length(pos_com))),replace=false)
 
 
     pos_eld = findall(x-> humans[x].age>=65, 1:length(humans))
     pos_eld = sample(pos_eld,Int(round(p.eld_comp*length(pos_eld))),replace=false)
 
-    pos_n_com = findall(x->humans[x].comorbidity == 0 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=18, 1:length(humans))
+    pos_n_com = findall(x->humans[x].comorbidity == 0 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=p.min_age_vac, 1:length(humans))
     pos_n_com = sample(pos_n_com,Int(round(length(pos_n_com))),replace=false)
     #pos_y = findall(x-> humans[x].age<18, 1:length(humans))
     #pos_y = sample(pos_y,Int(round(p.young_comp*length(pos_y))),replace=false)
@@ -556,14 +562,14 @@ function vac_selection_e()
         humans[i].hcw = true
     end
 
-    pos_com = findall(x->humans[x].comorbidity == 1 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=18, 1:length(humans))
+    pos_com = findall(x->humans[x].comorbidity == 1 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=p.min_age_vac, 1:length(humans))
     pos_com = sample(pos_com,Int(round(p.comor_comp*length(pos_com))),replace=false)
 
 
     pos_eld = findall(x-> humans[x].age>=65, 1:length(humans))
     pos_eld = sample(pos_eld,Int(round(p.eld_comp*length(pos_eld))),replace=false)
 
-    pos_n_com = findall(x->humans[x].comorbidity == 0 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=18, 1:length(humans))
+    pos_n_com = findall(x->humans[x].comorbidity == 0 && !(x in pos_hcw) && humans[x].age<65 && humans[x].age>=p.min_age_vac, 1:length(humans))
     pos_n_com = sample(pos_n_com,Int(round(length(pos_n_com))),replace=false)
     #pos_y = findall(x-> humans[x].age<18, 1:length(humans))
     #pos_y = sample(pos_y,Int(round(p.young_comp*length(pos_y))),replace=false)
@@ -973,65 +979,57 @@ function vac_update(x::Human)
         comm = x.comorbidity
     end
 
-   #=  if x.vac_status > 0 
-        if x.days_vac == p.days_to_protection[x.vac_status]
-            if x.vac_status == 1
-                red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-                aux = p.single_dose ? ((1-red_com)^comm)*(p.vac_efficacy) : ((1-red_com)^comm)*p.vac_efficacy_fd
-                x.vac_ef = aux
-            else
-                red_com = x.vac_red#p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-                x.vac_ef = ((1-red_com)^comm)*(p.vac_efficacy-p.vac_efficacy_fd)+x.vac_ef
-            end
-        end
-        x.days_vac += 1
-    end =#
 
     if x.vac_status == 1
-        if x.days_vac == p.days_to_protection[x.vac_status]#14
+        if x.days_vac == p.days_to_protection[x.vac_status][1]#14
             red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-            if p.single_dose
-                aux_ = x.age >= 65 ? p.vac_ef_eld : p.vac_efficacy
-            else
-                aux_ = x.age >= 65 ? p.vac_ef_eld_fd : p.vac_efficacy_fd
-            end
-            aux = ((1-red_com)^comm)*aux_
-            x.vac_ef = aux
-        end
+            x.vac_ef_inf = p.vac_efficacy_inf[x.vac_status][1]
+            x.vac_ef_symp = p.vac_efficacy_symp[x.vac_status][1]
+            x.vac_ef_sev = p.vac_efficacy_sev[x.vac_status][1]
 
-        if !p.single_dose
-            if x.days_vac > p.max_vac_delay #42
-                x.vac_ef = x.vac_ef-(p.ef_decrease_per_week/7)#0.05/7
-                if x.vac_ef < p.min_eff #0.02
-                    x.vac_ef = p.min_eff
-                end
-            end
+            x.index_day = min(length(p.days_to_protection[x.vac_status]),x.index_day+1)
+
+        elseif x.days_vac == p.days_to_protection[x.vac_status][x.index_day]#14
+            red_com = x.vac_red #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
+            x.vac_ef_inf = (p.vac_efficacy_inf[x.vac_status][x.index_day]-p.vac_efficacy_inf[x.vac_status][x.index_day-1])+x.vac_ef_inf
+            x.vac_ef_symp = (p.vac_efficacy_symp[x.vac_status][x.index_day]-p.vac_efficacy_symp[x.vac_status][x.index_day-1])+x.vac_ef_symp
+            x.vac_ef_sev = (p.vac_efficacy_sev[x.vac_status][x.index_day]-p.vac_efficacy_sev[x.vac_status][x.index_day-1])+x.vac_ef_sev
+
+            x.index_day = min(length(p.days_to_protection[x.vac_status]),x.index_day+1)
+
         end
         x.days_vac += 1
         
     elseif x.vac_status == 2
-        if x.days_vac == p.days_to_protection[x.vac_status]#7
-            aux_ = x.age >= 65 ? p.vac_ef_eld : p.vac_efficacy
-            aux_2 = x.age >= 65 ? p.vac_ef_eld_fd : p.vac_efficacy_fd
-            if p.vac_effect == 1
-                aux = ((1-x.vac_red)^comm)*(aux_-aux_2)+x.vac_ef #0.43 + x = second dose
-                if aux < ((1-x.vac_red)^comm)*aux_2
-                    aux = ((1-x.vac_red)^comm)*aux_2
-                end
-    
-            elseif p.vac_effect == 2
-                aux = ((1- x.vac_red)^comm)*aux_ #0.95
-            else
-                error("Vaccinating but no vac effect")
-            end
+        if x.days_vac == p.days_to_protection[x.vac_status][1]#0
+            
+            aux1 = ((1- x.vac_red)^comm)*p.vac_efficacy_inf[x.vac_status][1] #0.95
+            aux2 = ((1- x.vac_red)^comm)*p.vac_efficacy_symp[x.vac_status][1] #0.95
+            aux3 = ((1- x.vac_red)^comm)*p.vac_efficacy_sev[x.vac_status][1] #0.95
+        
            #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
-            x.vac_ef = aux
+            x.vac_ef_inf = aux1
+            x.vac_ef_symp = aux2
+            x.vac_ef_sev = aux3
+
+            x.index_day = min(length(p.days_to_protection[x.vac_status]),x.index_day+1)
+        elseif x.days_vac == p.days_to_protection[x.vac_status][x.index_day]#7
+           
+            aux1 = ((1- x.vac_red)^comm)*p.vac_efficacy_inf[x.vac_status][x.index_day] #0.95
+            aux2 = ((1- x.vac_red)^comm)*p.vac_efficacy_symp[x.vac_status][x.index_day] #0.95
+            aux3 = ((1- x.vac_red)^comm)*p.vac_efficacy_sev[x.vac_status][x.index_day] #0.95
+        
+           #p.vac_com_dec_min+rand()*(p.vac_com_dec_max-p.vac_com_dec_min)
+            x.vac_ef_inf = aux1
+            x.vac_ef_symp = aux2
+            x.vac_ef_sev = aux3
+
+            x.index_day = min(length(p.days_to_protection[x.vac_status]),x.index_day+1)
         end
         x.days_vac += 1
     end
 
 end
-
 function reset_params(ip::ModelParameters)
     # the p is a global const
     # the ip is an incoming different instance of parameters 
@@ -1433,7 +1431,7 @@ function move_to_latent(x::Human)
     age_thres = [4, 19, 49, 64, 79, 999]
     g = findfirst(y-> y >= x.age, age_thres)
      
-    if rand() < (symp_pcts[g])*(1-x.vac_ef*(1-p.strain_ef_red)^(x.strain-1))
+    if rand() < (symp_pcts[g])*(1-x.vac_ef_symp*(1-p.strain_ef_red)^(x.strain-1))
         x.swap = x.strain == 1 ? PRE : PRE2
     else
         x.swap = x.strain == 1 ? ASYMP : ASYMP2
@@ -1466,7 +1464,7 @@ function move_to_pre(x::Human)
     x.tis = 0   # reset time in state 
     x.exp = x.dur[3] # get the presymptomatic period
     x.strain < 0 && error("No strain - pre")
-    if rand() < (1-θ[x.ag])*(1-x.vac_ef*(1-p.strain_ef_red)^(x.strain-1))
+    if rand() < (1-θ[x.ag])*(1-x.vac_ef_sev*(1-p.strain_ef_red)^(x.strain-1))
         x.swap = x.strain == 1 ? INF : INF2
     else 
         x.swap = x.strain == 1 ? MILD : MILD2
@@ -1585,7 +1583,7 @@ function move_to_hospicu(x::Human)
     # on May 31th, 2020
     #= age_thres = [24;34;44;54;64;74;84;999]
     g = findfirst(y-> y >= x.age,age_thres) =#
-    aux = [0:4, 5:19, 20:44, 45:54, 55:64, 65:74, 75:85, 85:99]
+    aux = [0:4, 5:19, 20:44, 45:54, 55:64, 65:74, 75:84, 85:99]
    
     if x.strain == 1
 
@@ -1601,6 +1599,7 @@ function move_to_hospicu(x::Human)
       
             error("No strain - hospicu")
     end
+    
     gg = findfirst(y-> x.age in y,aux)
 
     psiH = Int(round(rand(Distributions.truncated(Gamma(4.5, 2.75), 8, 17))))
@@ -1749,7 +1748,7 @@ function dyntrans(sys_time, grps)
                     # tranmission dynamics
                         if  y.health == SUS && y.swap == UNDEF                  
                             beta = _get_betavalue(sys_time, xhealth)
-                            if rand() < beta*(1-y.vac_ef*(1-p.reduction_protection)*(1-p.strain_ef_red)^(x.strain-1))
+                            if rand() < beta*(1-y.vac_ef_inf*(1-p.strain_ef_red)^(x.strain-1))
                                 totalinf += 1
                                 
                                 y.exp = y.tis   ## force the move to latent in the next time step.
